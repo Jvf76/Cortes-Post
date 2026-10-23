@@ -1,0 +1,92 @@
+name: cortesautomaticos
+
+x-backend: &backend
+  image: cortesautomaticos-backend:local
+  build: ./backend
+  env_file: .env
+  environment:
+    DATABASE_URL: postgresql+psycopg://cortes:${POSTGRES_PASSWORD}@postgres:5432/cortes
+    REDIS_URL: redis://redis:6379/0
+    STORAGE_DIR: /data
+    FRONTEND_URL: http://localhost:3000
+    APP_BASE_URL: http://localhost:3000
+  volumes:
+    - media:/data
+    - models:/home/app/.cache
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: postgres:17-bookworm
+    environment:
+      POSTGRES_DB: cortes
+      POSTGRES_USER: cortes
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Execute scripts/setup.ps1 primeiro}
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U cortes -d cortes"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+  redis:
+    image: valkey/valkey:8.1-bookworm
+    command: [valkey-server, --appendonly, 'yes']
+    volumes:
+      - valkey:/data
+    healthcheck:
+      test: [CMD, valkey-cli, ping]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+  migrate:
+    <<: *backend
+    command: [alembic, upgrade, head]
+    restart: 'no'
+  backend:
+    <<: *backend
+    command: [uvicorn, 'app.main:app', --host, 0.0.0.0, --port, '8000']
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+  worker:
+    <<: *backend
+    command: [celery, -A, app.worker.celery_app, worker, --loglevel=info, --concurrency=1, -Q, 'media,publication,maintenance']
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+  scheduler:
+    <<: *backend
+    command: [celery, -A, app.worker.celery_app, beat, --loglevel=info, --schedule=/data/celerybeat-schedule]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+  frontend:
+    build: ./frontend
+    environment:
+      BACKEND_URL: http://backend:8000
+      NODE_ENV: production
+    ports:
+      - '127.0.0.1:3000:3000'
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  postgres:
+  valkey:
+  media:
+  models:
