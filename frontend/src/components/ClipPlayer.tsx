@@ -45,8 +45,23 @@ export function ClipPlayer({
   const [playing, setPlaying] = useState(false);
   const [error, setError] = useState(false);
   const [ready, setReady] = useState(false);
+  const [reloadCount, setReloadCount] = useState(0);
   const [scale, setScale] = useState(0.33);
   const end = start + duration;
+
+  // Clear stale media errors and readiness state whenever the source URL changes.
+  useEffect(() => {
+    setError(false);
+    setReady(false);
+    setPlaying(false);
+  }, [sourceUrl]);
+
+  function retryLoad() {
+    setError(false);
+    setReady(false);
+    setPlaying(false);
+    setReloadCount((c) => c + 1);
+  }
 
   useImperativeHandle(handleRef, () => ({
     seek: (t: number) => {
@@ -127,24 +142,42 @@ export function ClipPlayer({
         aria-label="Pré-visualização vertical 9:16"
       >
         {error ? (
-          <div className="center-state" style={{ position: "absolute", inset: 0 }}>
-            <Alert tone="warning">Não foi possível carregar o vídeo original.</Alert>
+          <div className="center-state" style={{ position: "absolute", inset: 0, padding: 16 }}>
+            <Alert
+              tone="warning"
+              title="Pré-visualização do vídeo original indisponível"
+              action={
+                <button type="button" className="btn btn-sm" onClick={retryLoad}>
+                  Tentar recarregar vídeo
+                </button>
+              }
+            >
+              Não foi possível reproduzir o vídeo original no navegador (por exemplo, falha
+              temporária ou formato não compatível com o navegador). Você ainda pode ajustar o
+              intervalo, editar as legendas e aprovar o corte para gerar o MP4 compatível.
+            </Alert>
           </div>
         ) : (
           <video
+            key={`${sourceUrl}:${reloadCount}`}
             ref={videoRef}
             src={sourceUrl}
             preload="metadata"
             playsInline
             style={{ objectPosition: `${Math.round(framing.offset_x * 100)}% 50%` }}
             onLoadedMetadata={() => {
+              setError(false);
               setReady(true);
               if (videoRef.current) videoRef.current.currentTime = start;
             }}
             onTimeUpdate={onTimeUpdate}
             onPlay={() => setPlaying(true)}
             onPause={() => setPlaying(false)}
-            onError={() => setError(true)}
+            onError={() => {
+              setPlaying(false);
+              setReady(false);
+              setError(true);
+            }}
             onClick={toggle}
           />
         )}

@@ -11,6 +11,9 @@ Este inventário não substitui os textos de licença incluídos nos pacotes, ne
 | faster-whisper e modelo Whisper | Transcrição local | Código e pesos têm licenças próprias; registrar versão/revisão do modelo utilizado |
 | Next.js, React e dependências npm | Frontend | Versões resolvidas em frontend/package-lock.json; auditoria/inventário por módulo |
 | Bibliotecas Python | API/workers | Versões testadas em backend/requirements*.txt e inventário do backend |
+| yt-dlp 2026.10.21 | Importação de vídeo individual YouTube | Wheel PyPI sob Unlicense; não é uma API oficial do YouTube. Fonte/documentação: https://github.com/yt-dlp/yt-dlp |
+| yt-dlp-ejs 0.8.0 | Runtime de extração YouTube | Unlicense; componentes incluídos astring (MIT) e meriyah (ISC), conforme documentação upstream. Preservar avisos do pacote: https://github.com/yt-dlp/ejs |
+| deno 2.9.8 | Execução JavaScript isolada para extração | Pacote Python redistribui Deno, MIT; licença conferida no wheel instalado. Fonte: https://github.com/denoland/deno |
 | Concat 0.2.8 | Dependência externa; integração operacional pendente | AGPL-3.0-or-later; versão identificada nos metadados do executável local em 23/10/2026 e licença conferida no manifesto da tag v0.2.8. Proibido modificar/copiar seu código para o projeto. Ver regra de revisão jurídica no README |
 | ElevenLabs Python SDK | Integração futura | MIT no SDK; termos de serviço e direitos de voz separados; não integrado operacionalmente |
 

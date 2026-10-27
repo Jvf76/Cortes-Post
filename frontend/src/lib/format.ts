@@ -106,3 +106,90 @@ export function isHttpsUrl(value: string): boolean {
     return false;
   }
 }
+
+const YOUTUBE_VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
+const YOUTUBE_HOSTS = new Set([
+  "youtube.com",
+  "www.youtube.com",
+  "m.youtube.com",
+  "music.youtube.com",
+  "youtu.be",
+]);
+const UNSUPPORTED_PLATFORM_HOSTS = new Set([
+  "instagram.com",
+  "www.instagram.com",
+  "tiktok.com",
+  "www.tiktok.com",
+  "vm.tiktok.com",
+]);
+
+/**
+ * Returns the canonical `https://www.youtube.com/watch?v=ID` URL when `value`
+ * is a supported single-video YouTube HTTPS link (`watch?v=ID`, `youtu.be/ID`,
+ * `shorts/ID` or `embed/ID`), or `null` otherwise.
+ */
+export function canonicalizeYouTubeUrl(value: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(value.trim());
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "https:" || url.username || url.password || url.port) {
+    return null;
+  }
+  const host = url.hostname.toLowerCase().replace(/\.$/, "");
+  if (!YOUTUBE_HOSTS.has(host)) return null;
+
+  const pieces = url.pathname.split("/").filter(Boolean);
+  let videoId: string | null = null;
+  if (host === "youtu.be" && pieces.length === 1) {
+    videoId = pieces[0]!;
+  } else if (host !== "youtu.be" && url.pathname.replace(/\/+$/, "") === "/watch") {
+    const values = url.searchParams.getAll("v");
+    videoId = values.length === 1 ? values[0]! : null;
+  } else if (
+    host !== "youtu.be" &&
+    pieces.length === 2 &&
+    (pieces[0] === "shorts" || pieces[0] === "embed")
+  ) {
+    videoId = pieces[1]!;
+  }
+  if (!videoId || !YOUTUBE_VIDEO_ID.test(videoId)) return null;
+  return `https://www.youtube.com/watch?v=${videoId}`;
+}
+
+/**
+ * Validates the source URL entered in the "Link HTTPS" tab.
+ * Returns `null` when valid (either a single-video YouTube HTTPS link or a
+ * direct public HTTPS MP4 link), or a user-facing pt-BR error message.
+ */
+export function validateSourceUrl(value: string): string | null {
+  const trimmed = value.trim();
+  if (!isHttpsUrl(trimmed)) {
+    return "Informe um link HTTPS para um vídeo individual do YouTube ou para um arquivo MP4 público (sem usuário/senha).";
+  }
+  const url = new URL(trimmed);
+  const host = url.hostname.toLowerCase().replace(/\.$/, "");
+  if (YOUTUBE_HOSTS.has(host)) {
+    if (url.port) {
+      return "O link do YouTube deve usar HTTPS padrão sem credenciais.";
+    }
+    if (!canonicalizeYouTubeUrl(trimmed)) {
+      return "Informe o link de um único vídeo do YouTube (watch?v=ID, youtu.be/ID, shorts/ID ou embed/ID). Playlists, canais e páginas gerais não são aceitos.";
+    }
+    return null;
+  }
+  if (
+    host.endsWith(".youtube.com") ||
+    host.endsWith(".youtu.be") ||
+    host.includes("youtube") ||
+    host.includes("youtu.be") ||
+    UNSUPPORTED_PLATFORM_HOSTS.has(host) ||
+    host.endsWith(".instagram.com") ||
+    host.endsWith(".tiktok.com")
+  ) {
+    return "Apenas links de um único vídeo do YouTube (youtube.com / youtu.be) ou links HTTPS diretos para arquivo MP4 são suportados.";
+  }
+  return null;
+}

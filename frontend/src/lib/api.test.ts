@@ -1,5 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ApiError, api, extractDetail, setCsrfToken, setUnauthorizedHandler } from "./api";
+import {
+  ApiError,
+  api,
+  extractDetail,
+  setCsrfToken,
+  setUnauthorizedHandler,
+  uploadProject,
+} from "./api";
 
 function jsonResponse(status: number, body: unknown) {
   return new Response(body === undefined ? null : JSON.stringify(body), {
@@ -86,6 +93,85 @@ describe("api client", () => {
   it("handles 204 responses", async () => {
     fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
     await expect(api.deleteProject("p")).resolves.toBeUndefined();
+  });
+
+  it("forwards editing_instructions in createProjectFromUrl and defaults to empty string", async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(201, { id: "p1", editing_instructions: "Focar em vendas" }),
+    );
+    await api.createProjectFromUrl({
+      title: " Vídeo YouTube ",
+      source_url: "https://youtu.be/dQw4w9WgXcQ",
+      duration_seconds: 45,
+      rights_confirmed: true,
+      editing_instructions: "Focar em vendas",
+    });
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe("/api/projects");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body)).toEqual({
+      title: " Vídeo YouTube ",
+      source_url: "https://youtu.be/dQw4w9WgXcQ",
+      duration_seconds: 45,
+      rights_confirmed: true,
+      editing_instructions: "Focar em vendas",
+    });
+
+    fetchMock.mockResolvedValue(jsonResponse(201, { id: "p2", editing_instructions: "" }));
+    await api.createProjectFromUrl({
+      title: "MP4 Direto",
+      source_url: "https://cdn.example.com/v.mp4",
+      duration_seconds: 30,
+      rights_confirmed: true,
+    });
+    expect(JSON.parse(fetchMock.mock.calls[1]![1].body)).toEqual({
+      title: "MP4 Direto",
+      source_url: "https://cdn.example.com/v.mp4",
+      duration_seconds: 30,
+      rights_confirmed: true,
+      editing_instructions: "",
+    });
+  });
+
+  it("forwards editing_instructions in multipart uploadProject FormData", async () => {
+    let capturedForm: FormData | null = null;
+    class FakeXHR {
+      status = 201;
+      responseText = JSON.stringify({ id: "up1", editing_instructions: "Priorizar perguntas" });
+      withCredentials = false;
+      upload = { onprogress: null as ((e: ProgressEvent) => void) | null };
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      onabort: (() => void) | null = null;
+      open = vi.fn();
+      setRequestHeader = vi.fn();
+      send = vi.fn((body: FormData) => {
+        capturedForm = body;
+        this.onload?.();
+      });
+      abort = vi.fn();
+    }
+    vi.stubGlobal("XMLHttpRequest", FakeXHR);
+    const file = new File(["mp4"], "aula.mp4", { type: "video/mp4" });
+    const handle = uploadProject(
+      {
+        file,
+        title: "Aula 1",
+        duration_seconds: 60,
+        rights_confirmed: true,
+        editing_instructions: "Priorizar perguntas",
+      },
+      () => undefined,
+    );
+    await expect(handle.promise).resolves.toMatchObject({
+      id: "up1",
+      editing_instructions: "Priorizar perguntas",
+    });
+    expect(capturedForm).not.toBeNull();
+    expect(capturedForm!.get("title")).toBe("Aula 1");
+    expect(capturedForm!.get("duration_seconds")).toBe("60");
+    expect(capturedForm!.get("rights_confirmed")).toBe("true");
+    expect(capturedForm!.get("editing_instructions")).toBe("Priorizar perguntas");
   });
 });
 

@@ -2,8 +2,8 @@
 
 import { useRef, useState, type DragEvent, type FormEvent } from "react";
 import { api, uploadProject, type UploadHandle } from "@/lib/api";
-import { formatBytes, isHttpsUrl } from "@/lib/format";
-import type { ClipDuration, Project } from "@/lib/types";
+import { formatBytes, validateSourceUrl } from "@/lib/format";
+import { MAX_EDITING_INSTRUCTIONS, type ClipDuration, type Project } from "@/lib/types";
 import { Alert, ProgressBar, Spinner, errorMessage } from "./ui";
 
 type Source = "url" | "file";
@@ -54,6 +54,7 @@ export function ImportPanel({ onCreated }: { onCreated: (project: Project) => vo
   const [url, setUrl] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [duration, setDuration] = useState<ClipDuration>(30);
+  const [instructions, setInstructions] = useState("");
   const [rights, setRights] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -83,20 +84,28 @@ export function ImportPanel({ onCreated }: { onCreated: (project: Project) => vo
     event.preventDefault();
     setError(null);
     if (!title.trim()) return setError("Informe um título para o projeto.");
+    const trimmedInstructions = instructions.trim();
+    if (trimmedInstructions.length > MAX_EDITING_INSTRUCTIONS) {
+      return setError(
+        `As instruções para os cortes devem ter no máximo ${MAX_EDITING_INSTRUCTIONS} caracteres.`,
+      );
+    }
     if (!rights) return setError("Confirme que você tem os direitos sobre o vídeo.");
     setBusy(true);
     try {
       let project: Project;
       if (source === "url") {
-        if (!isHttpsUrl(url)) {
+        const urlError = validateSourceUrl(url);
+        if (urlError) {
           setBusy(false);
-          return setError("Informe um link HTTPS direto para um arquivo MP4 (sem usuário/senha).");
+          return setError(urlError);
         }
         project = await api.createProjectFromUrl({
           title: title.trim(),
           source_url: url.trim(),
           duration_seconds: duration,
           rights_confirmed: true,
+          editing_instructions: trimmedInstructions,
         });
       } else {
         if (!file) {
@@ -105,7 +114,13 @@ export function ImportPanel({ onCreated }: { onCreated: (project: Project) => vo
         }
         setUpload({ loaded: 0, total: file.size });
         const handle = uploadProject(
-          { file, title: title.trim(), duration_seconds: duration, rights_confirmed: true },
+          {
+            file,
+            title: title.trim(),
+            duration_seconds: duration,
+            rights_confirmed: true,
+            editing_instructions: trimmedInstructions,
+          },
           (loaded, total) => setUpload({ loaded, total }),
         );
         handleRef.current = handle;
@@ -114,6 +129,7 @@ export function ImportPanel({ onCreated }: { onCreated: (project: Project) => vo
       setTitle("");
       setUrl("");
       setFile(null);
+      setInstructions("");
       setRights(false);
       onCreated(project);
     } catch (err) {
@@ -137,7 +153,10 @@ export function ImportPanel({ onCreated }: { onCreated: (project: Project) => vo
       <div className="card-header">
         <div>
           <h2 id="import-title">Novo projeto</h2>
-          <p>Importe um MP4 autorizado para gerar até 5 sugestões de cortes.</p>
+          <p>
+            Importe um vídeo individual do YouTube ou um MP4 autorizado para gerar até 5 sugestões
+            de cortes.
+          </p>
         </div>
       </div>
       <div className="tabs" role="tablist" aria-label="Origem do vídeo">
@@ -179,21 +198,26 @@ export function ImportPanel({ onCreated }: { onCreated: (project: Project) => vo
 
         {source === "url" ? (
           <div className="field">
-            <label htmlFor="project-url">Link direto do MP4</label>
+            <label htmlFor="project-url">Link do YouTube ou MP4 direto (HTTPS)</label>
             <input
               id="project-url"
               className="input"
               type="url"
               inputMode="url"
-              placeholder="https://exemplo.com/video.mp4"
+              placeholder="https://www.youtube.com/watch?v=... ou https://exemplo.com/video.mp4"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               disabled={busy}
               aria-describedby="project-url-hint"
             />
             <span id="project-url-hint" className="hint">
-              Somente links HTTPS públicos para o arquivo. Páginas de plataformas (YouTube, Instagram,
-              TikTok) não são suportadas.
+              Aceita apenas um vídeo individual do YouTube (<code>youtube.com/watch?v=ID</code>,{" "}
+              <code>youtu.be/ID</code>, <code>youtube.com/shorts/ID</code> ou{" "}
+              <code>youtube.com/embed/ID</code>) ou link HTTPS direto para um arquivo MP4 público
+              (sem usuário/senha). Playlists, canais e outras páginas não são suportados. Vídeos
+              indisponíveis, privados, restritos ou transmissões ao vivo (lives) podem exigir o
+              envio do arquivo MP4 original na aba Arquivo. Nunca solicitamos cookies, senhas ou
+              chaves de API.
             </span>
           </div>
         ) : (
@@ -255,6 +279,32 @@ export function ImportPanel({ onCreated }: { onCreated: (project: Project) => vo
         )}
 
         <DurationPicker value={duration} onChange={setDuration} disabled={busy} />
+
+        <div className="field">
+          <div className="row-between">
+            <label htmlFor="project-instructions">Instruções para os cortes (opcional)</label>
+            <span className="small muted" aria-live="polite">
+              {instructions.length}/{MAX_EDITING_INSTRUCTIONS}
+            </span>
+          </div>
+          <textarea
+            id="project-instructions"
+            className="textarea"
+            rows={3}
+            maxLength={MAX_EDITING_INSTRUCTIONS}
+            placeholder="Ex.: Priorize momentos sobre precificação, dúvidas da audiência e exemplos práticos; evite a abertura e os avisos finais."
+            value={instructions}
+            onChange={(e) => setInstructions(e.target.value)}
+            disabled={busy}
+            aria-describedby="project-instructions-hint"
+          />
+          <span id="project-instructions-hint" className="hint">
+            Exemplo: indique temas, perguntas ou momentos-chave que deseja destacar ou evitar. Estas
+            instruções em linguagem natural apenas orientam as sugestões da IA quando configurada
+            (não são comandos executados); se a IA não estiver ativa, nenhuma sugestão é simulada e
+            a seleção manual do trecho continua disponível.
+          </span>
+        </div>
 
         <label className="checkbox">
           <input

@@ -268,10 +268,24 @@ export default function ClipEditorPage() {
           </Alert>
         )}
         {missingTranslations && (
-          <Alert tone="info" title="Tradução automática pt-BR indisponível">
-            A tradução automática não foi gerada para uma ou mais legendas (integração externa de IA não
-            configurada ou indisponível). Você pode usar o modo “Original” ou preencher a tradução pt-BR
-            manualmente nas legendas.
+          <Alert
+            tone="info"
+            title="Modo manual sem tradução automática (IA opcional não configurada)"
+            action={
+              draft.subtitle_mode !== "original" ? (
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  onClick={() => update({ subtitle_mode: "original" })}
+                >
+                  Usar modo Original
+                </button>
+              ) : undefined
+            }
+          >
+            A tradução automática pt-BR não foi gerada (integração externa de IA não configurada ou
+            indisponível). No modo “Original” você pode revisar, aprovar e renderizar o corte
+            normalmente; se preferir legendar em pt-BR, preencha os campos de tradução manualmente.
           </Alert>
         )}
         {!dirty && issues.length > 0 && (
@@ -282,8 +296,17 @@ export default function ClipEditorPage() {
           </Alert>
         )}
         {clip.reason && (
-          <Alert tone="info" title="Por que este trecho foi sugerido">
-            {clip.reason}
+          <Alert
+            tone="info"
+            title={
+              clip.reason === "Seleção manual"
+                ? "Corte criado manualmente"
+                : "Por que este trecho foi sugerido"
+            }
+          >
+            {clip.reason === "Seleção manual"
+              ? "Seleção manual — revise o intervalo, as legendas sincronizadas, o estilo e o enquadramento e clique em “Aprovar e renderizar” para gerar o MP4 final."
+              : clip.reason}
           </Alert>
         )}
       </div>
@@ -504,6 +527,13 @@ function RenderPanel({
   onPublish: () => void;
 }) {
   const rendering = CLIP_ACTIVE.has(clip.status);
+  const [videoError, setVideoError] = useState(false);
+  const [reloadCount, setReloadCount] = useState(0);
+
+  useEffect(() => {
+    setVideoError(false);
+  }, [clip.artifact_url, clip.revision, clip.status]);
+
   return (
     <section className="card" aria-labelledby="render-title">
       <div className="card-header">
@@ -532,15 +562,39 @@ function RenderPanel({
       {clip.status === "ready" && (
         <div className="stack">
           {clip.artifact_url ? (
-            <video
-              src={clip.artifact_url}
-              controls
-              playsInline
-              preload="metadata"
-              style={{ width: "100%", maxHeight: 520, background: "#000", borderRadius: 8, aspectRatio: "9 / 16" }}
-            >
-              Seu navegador não suporta a reprodução de vídeo.
-            </video>
+            videoError ? (
+              <Alert
+                tone="warning"
+                title="Não foi possível reproduzir o vídeo renderizado aqui"
+                action={
+                  <button
+                    type="button"
+                    className="btn btn-sm"
+                    onClick={() => {
+                      setVideoError(false);
+                      setReloadCount((c) => c + 1);
+                    }}
+                  >
+                    Tentar recarregar vídeo
+                  </button>
+                }
+              >
+                Use o botão “Baixar MP4” abaixo ou tente recarregar a pré-visualização.
+              </Alert>
+            ) : (
+              <video
+                key={`${clip.artifact_url}:${clip.revision}:${reloadCount}`}
+                src={clip.artifact_url}
+                controls
+                playsInline
+                preload="metadata"
+                style={{ width: "100%", maxHeight: 520, background: "#000", borderRadius: 8, aspectRatio: "9 / 16" }}
+                onLoadedMetadata={() => setVideoError(false)}
+                onError={() => setVideoError(true)}
+              >
+                Seu navegador não suporta a reprodução de vídeo.
+              </video>
+            )
           ) : (
             <Alert tone="warning">O arquivo final ainda não está disponível para pré-visualização.</Alert>
           )}

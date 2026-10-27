@@ -34,10 +34,11 @@ class ClipOut(ORM):
     id: str; project_id: str; start_seconds: float; end_seconds: float; reason: str; score: float; status: str; revision: int
     subtitle_mode: str; framing: dict; style: dict; cues: list[CueOut]; artifact_url: str | None = None; srt_url: str | None = None; error: str | None
 class ProjectOut(ORM):
-    id: str; title: str; status: str; stage: str; progress: float | None; error: str | None; duration_seconds: int
+    id: str; title: str; editing_instructions: str; status: str; stage: str; progress: float | None; error: str | None; duration_seconds: int
     source_duration: float | None; language: str | None; created_at: datetime; clips: list[ClipOut]
 class ProjectCreate(BaseModel):
     title: str = Field(min_length=1,max_length=200); source_url: HttpUrl; duration_seconds: Literal[30,45,60]; rights_confirmed: Literal[True]
+    editing_instructions: str = Field(default="",max_length=2000)
 class ProjectLanguagePatch(BaseModel): language: str = Field(min_length=2,max_length=32,pattern=r"^[A-Za-z]{2,3}(?:-[A-Za-z]{2})?$")
 class ManualClip(BaseModel): start_seconds: float = Field(ge=0)
 class ClipPatch(BaseModel):

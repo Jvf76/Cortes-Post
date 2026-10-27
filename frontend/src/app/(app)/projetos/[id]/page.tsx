@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert,
   Dialog,
@@ -189,8 +189,36 @@ export default function ProjectPage() {
         )}
 
         {project.status === "ready" && project.error && (
-          <Alert tone="warning" title="Aviso do processamento">
-            {project.error}
+          <Alert
+            tone="warning"
+            title={
+              /gemini|sugestões automáticas|corte manual/i.test(project.error)
+                ? "Modo manual ativo (IA opcional não configurada)"
+                : "Aviso do processamento"
+            }
+            action={
+              <button
+                type="button"
+                className="btn btn-sm"
+                onClick={() => {
+                  document.getElementById("manual-start")?.focus();
+                  document
+                    .getElementById("manual-clip-section")
+                    ?.scrollIntoView({ behavior: "smooth", block: "start" });
+                }}
+              >
+                Selecionar trecho manual
+              </button>
+            }
+          >
+            <div className="stack-sm">
+              <span>{project.error}</span>
+              <span className="small">
+                O vídeo e a transcrição estão prontos. Use a seção{" "}
+                <strong>Selecionar trecho manualmente</strong> abaixo para criar o corte com as
+                legendas sincronizadas, revisar, aprovar e renderizar o MP4 final.
+              </span>
+            </div>
           </Alert>
         )}
 
@@ -245,6 +273,23 @@ export default function ProjectPage() {
             </dd>
             <dt>Etapa</dt>
             <dd>{projectStage(project.stage)}</dd>
+            <dt>Instruções para os cortes</dt>
+            <dd>
+              {project.editing_instructions?.trim() ? (
+                <div className="stack-sm">
+                  <div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
+                    {project.editing_instructions}
+                  </div>
+                  <div className="small muted">
+                    Orientações em linguagem natural (não são comandos executados): guiam as
+                    sugestões da IA quando configurada; a seleção manual de trechos permanece
+                    disponível.
+                  </div>
+                </div>
+              ) : (
+                <span className="muted">Nenhuma instrução informada</span>
+              )}
+            </dd>
           </dl>
         </section>
 
@@ -264,9 +309,15 @@ export default function ProjectPage() {
                 As sugestões aparecerão aqui quando a transcrição e a análise terminarem.
               </EmptyState>
             ) : (
-              <EmptyState title="Nenhum corte sugerido">
+              <EmptyState
+                title={
+                  project.status === "ready"
+                    ? "Pronto para seleção manual de cortes"
+                    : "Nenhum corte sugerido"
+                }
+              >
                 {project.status === "ready"
-                  ? "Nenhuma sugestão foi gerada. Selecione um trecho manualmente abaixo."
+                  ? "A transcrição do vídeo está concluída. Escolha o tempo inicial em “Selecionar trecho manualmente” abaixo para criar um corte com legendas sincronizadas, editar, aprovar e renderizar."
                   : "Os cortes ficam disponíveis após o processamento."}
               </EmptyState>
             )
@@ -359,8 +410,18 @@ function ManualClip({ project, onCreated }: { project: Project; onCreated: (clip
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [videoError, setVideoError] = useState(false);
+  const [reloadCount, setReloadCount] = useState(0);
   const maxStart =
     project.source_duration != null ? Math.max(0, project.source_duration - project.duration_seconds) : null;
+
+  useEffect(() => {
+    setVideoError(false);
+  }, [project.id, project.status, project.source_duration]);
+
+  function retryVideo() {
+    setVideoError(false);
+    setReloadCount((c) => c + 1);
+  }
 
   async function create() {
     setError(null);
@@ -379,26 +440,43 @@ function ManualClip({ project, onCreated }: { project: Project; onCreated: (clip
   }
 
   return (
-    <section className="card" aria-labelledby="manual-title">
+    <section id="manual-clip-section" className="card" aria-labelledby="manual-title">
       <div className="card-header">
         <div>
           <h2 id="manual-title">Selecionar trecho manualmente</h2>
           <p>
-            Assista ao vídeo original e escolha o início. O corte terá {project.duration_seconds}s.
+            Escolha o instante inicial para criar um corte de {project.duration_seconds}s com a
+            transcrição sincronizada. Na etapa seguinte você poderá revisar as legendas, aprovar e
+            renderizar o MP4 compatível.
           </p>
         </div>
       </div>
       <div className="grid-2">
         <div>
           {videoError ? (
-            <Alert tone="warning">Não foi possível carregar o vídeo original para pré-visualização.</Alert>
+            <Alert
+              tone="warning"
+              title="Pré-visualização do vídeo original indisponível"
+              action={
+                <button type="button" className="btn btn-sm" onClick={retryVideo}>
+                  Tentar recarregar vídeo
+                </button>
+              }
+            >
+              Não foi possível carregar ou reproduzir o vídeo original aqui (por exemplo, falha
+              temporária ou formato não compatível com o navegador). Você ainda pode informar o
+              tempo de início ao lado e clicar em “Criar corte” — o servidor gera um MP4 compatível
+              na renderização final.
+            </Alert>
           ) : (
             <video
+              key={`${project.id}:${reloadCount}`}
               ref={videoRef}
               src={api.projectSourceUrl(project.id)}
               controls
               preload="metadata"
               style={{ width: "100%", borderRadius: 8, background: "#000", maxHeight: 320 }}
+              onLoadedMetadata={() => setVideoError(false)}
               onError={() => setVideoError(true)}
             >
               Seu navegador não suporta a reprodução de vídeo.

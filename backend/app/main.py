@@ -16,6 +16,7 @@ from .schemas import AccountOut, Approve, AuthIn, AuthOut, ClipOut, ClipPatch, M
 from .security import COOKIE, create_session, current_user, decrypt, digest, encrypt, hash_password, require_csrf, validate_https_public_url, verify_password
 from .worker import dispatch_outbox, enqueue  # enqueue retained as a public test seam
 from .youtube import oauth_flow
+from .youtube_import import canonicalize_youtube_url
 
 settings=get_settings()
 app=FastAPI(title="CortesAutomaticos API",version="1.0.0")
@@ -83,14 +84,18 @@ def projects(user: User=Depends(current_user),db: Session=Depends(get_db)):
     return [project_out(x) for x in rows]
 @app.post("/api/projects",status_code=201)
 def create_project(body: ProjectCreate,user: User=Depends(require_csrf),db: Session=Depends(get_db)):
-    validate_https_public_url(str(body.source_url)); p=Project(user_id=user.id,title=body.title,source_url=str(body.source_url),duration_seconds=body.duration_seconds,stage="importing",progress=0)
+    source_url=str(body.source_url)
+    canonical=canonicalize_youtube_url(source_url)
+    if canonical is None: validate_https_public_url(source_url)
+    else: source_url=canonical
+    p=Project(user_id=user.id,title=body.title,editing_instructions=body.editing_instructions,source_url=source_url,duration_seconds=body.duration_seconds,stage="importing",progress=0)
     db.add(p); db.commit(); db.refresh(p); queue(db,"process_project",p.id); return project_out(p)
 @app.post("/api/projects/upload",status_code=201)
-def upload_project(title: str=Form(...),duration_seconds: int=Form(...),rights_confirmed: bool=Form(...),file: UploadFile=File(...),user: User=Depends(require_csrf),db: Session=Depends(get_db)):
+def upload_project(title: str=Form(...),duration_seconds: int=Form(...),rights_confirmed: bool=Form(...),editing_instructions: str=Form("",max_length=2000),file: UploadFile=File(...),user: User=Depends(require_csrf),db: Session=Depends(get_db)):
     if not rights_confirmed: raise HTTPException(422,"É necessário confirmar os direitos")
     if duration_seconds not in (30,45,60): raise HTTPException(422,"Duração deve ser 30, 45 ou 60")
     if file.content_type not in ("video/mp4","application/octet-stream"): raise HTTPException(415,"Envie um arquivo MP4")
-    p=Project(user_id=user.id,title=title[:200],duration_seconds=duration_seconds,stage="importing",progress=0); db.add(p); db.flush()
+    p=Project(user_id=user.id,title=title[:200],editing_instructions=editing_instructions,duration_seconds=duration_seconds,stage="importing",progress=0); db.add(p); db.flush()
     path=settings.storage_dir/user.id/p.id/"source.mp4"; path.parent.mkdir(parents=True,exist_ok=True); size=0
     try:
         with path.open("xb") as out:

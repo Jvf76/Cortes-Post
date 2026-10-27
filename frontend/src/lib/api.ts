@@ -136,6 +136,7 @@ export interface UploadInput {
   title: string;
   duration_seconds: ClipDuration;
   rights_confirmed: boolean;
+  editing_instructions?: string;
 }
 
 export interface UploadHandle {
@@ -158,6 +159,7 @@ export function uploadProject(
     form.append("title", input.title);
     form.append("duration_seconds", String(input.duration_seconds));
     form.append("rights_confirmed", input.rights_confirmed ? "true" : "false");
+    form.append("editing_instructions", input.editing_instructions ?? "");
 
     xhr.open("POST", `${API_BASE}/projects/upload`);
     xhr.withCredentials = true;
@@ -203,7 +205,15 @@ export const api = {
     source_url: string;
     duration_seconds: ClipDuration;
     rights_confirmed: true;
-  }) => apiRequest<Project>("/projects", { method: "POST", body: input }),
+    editing_instructions?: string;
+  }) =>
+    apiRequest<Project>("/projects", {
+      method: "POST",
+      body: {
+        ...input,
+        editing_instructions: input.editing_instructions ?? "",
+      },
+    }),
   getProject: (id: string, signal?: AbortSignal) =>
     apiRequest<Project>(`/projects/${enc(id)}`, { signal }),
   deleteProject: (id: string) => apiRequest<void>(`/projects/${enc(id)}`, { method: "DELETE" }),

@@ -30,11 +30,15 @@ docker compose down
 
 ## Escopo
 
-Entrada: MP4 por URL HTTPS direta ou upload; declaração obrigatória de direitos; duração 30, 45 ou 60 segundos. Links para páginas sociais não são downloaders suportados.
+Entrada: vídeo individual do YouTube (`watch`, `youtu.be`, `shorts` ou `embed`), MP4 por URL HTTPS direta ou upload; declaração obrigatória de direitos; duração 30, 45 ou 60 segundos. Playlists, canais e páginas de outras redes não são suportados. Vídeos privados, com restrições de acesso, DRM ou lives exigem o arquivo original; o importador não solicita cookies ou credenciais.
+
+O campo opcional **Instruções para os cortes** aceita até 2000 caracteres para orientar temas e momentos desejados. As instruções são preservadas no projeto e orientam as sugestões quando o Gemini está configurado. Sem Gemini, o sistema informa a indisponibilidade e mantém a edição e seleção manual.
+
+O importador usa `yt-dlp==2026.10.21`, `yt-dlp-ejs==0.8.0` e `deno==2.9.8`, separados da integração OAuth de publicação. O worker Docker tem limite de memória de 4 GiB; o Deno precisa reservar espaço virtual maior que isso, por isso esse importador usa o limite físico do container. Não execute o worker sem limites em ambientes compartilhados. A validação local e as limitações do teste real estão em [docs/YOUTUBE_IMPORT_REPORT.md](docs/YOUTUBE_IMPORT_REPORT.md).
 
 Revisão: sugestões por transcrição, seleção manual, legendas original/pt-BR/ambas, estilo e enquadramento. Renderização exige aprovação explícita da revisão. MP4 vertical e SRT para download.
 
-Integrações Concat e ElevenLabs ficam preparadas por interfaces e decisões arquiteturais, sem integração operacional nesta fase. Instagram e TikTok ficam indisponíveis. A disponibilidade de YouTube depende da configuração OAuth e validação na conta autorizada.
+O aplicativo principal usa FFmpeg. Concat e ElevenLabs permanecem fora da integração operacional publicada. Instagram e TikTok ficam indisponíveis; publicação YouTube depende de OAuth e validação na conta autorizada.
 
 ## Concat — dependência externa e revisão jurídica
 
@@ -56,3 +60,7 @@ O Concat só pode ser usado como dependência externa, em processo separado, por
 - `compose.yaml`, `scripts/`: infraestrutura e verificações — coordenador.
 
 Os relatórios de cada módulo e o relatório final de validação distinguem testes executados de integrações ainda dependentes de credenciais.
+
+## Sugestões automáticas com Gemini
+
+Consulte [docs/GEMINI_SETUP.md](docs/GEMINI_SETUP.md) para configurar a chave local e o modelo. Nenhum segredo acompanha o repositório.

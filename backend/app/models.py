@@ -33,6 +33,7 @@ class Project(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     title: Mapped[str] = mapped_column(String(200))
+    editing_instructions: Mapped[str] = mapped_column(Text, default="")
     source_url: Mapped[str | None] = mapped_column(Text)
     source_path: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(32), default="queued")

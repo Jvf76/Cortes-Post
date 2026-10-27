@@ -60,6 +60,8 @@ services:
         condition: service_healthy
   worker:
     <<: *backend
+    # Limit resident memory through cgroups; V8/Deno needs a large virtual address space.
+    mem_limit: 4g
     command: [celery, -A, app.worker.celery_app, worker, --loglevel=info, --concurrency=1, -Q, 'media,publication,maintenance']
     depends_on:
       migrate:

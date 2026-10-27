@@ -121,7 +121,7 @@ function ProjectRow({ project }: { project: Project }) {
         )}
         {project.status === "ready" && project.error && (
           <div className="small" style={{ color: "var(--warning)" }}>
-            {project.error}
+            Modo manual disponível — {project.error}
           </div>
         )}
       </div>

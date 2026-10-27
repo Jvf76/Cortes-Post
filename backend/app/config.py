@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     media_cpu_seconds: int = 900
     media_memory_bytes: int = 4 * 1024**3
     retention_days: int = 7
+    youtube_import_timeout_seconds: int = 900
+    youtube_metadata_timeout_seconds: int = 120
+    youtube_max_height: int = 1080
     celery_task_always_eager: bool = False
     session_days: int = 14
 

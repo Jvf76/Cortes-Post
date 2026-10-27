@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  canonicalizeYouTubeUrl,
   clampPercent,
   formatTime,
   isHttpsUrl,
   localInputToUtcIso,
   parseHashtags,
   parseTime,
+  validateSourceUrl,
 } from "./format";
 
 describe("format", () => {
@@ -36,6 +38,49 @@ describe("format", () => {
     expect(isHttpsUrl("https://user:pw@example.com/v.mp4")).toBe(false);
     expect(isHttpsUrl("ftp://example.com")).toBe(false);
     expect(isHttpsUrl("not a url")).toBe(false);
+  });
+
+  it("validates single-video YouTube URLs and direct HTTPS MP4 URLs", () => {
+    expect(canonicalizeYouTubeUrl("https://www.youtube.com/watch?v=dQw4w9WgXcQ")).toBe(
+      "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    );
+    expect(
+      canonicalizeYouTubeUrl("https://youtube.com/watch?v=dQw4w9WgXcQ&list=PL123&index=2"),
+    ).toBe("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+    expect(canonicalizeYouTubeUrl("https://youtu.be/dQw4w9WgXcQ?t=15")).toBe(
+      "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    );
+    expect(canonicalizeYouTubeUrl("https://www.youtube.com/shorts/dQw4w9WgXcQ")).toBe(
+      "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    );
+    expect(canonicalizeYouTubeUrl("https://m.youtube.com/embed/dQw4w9WgXcQ")).toBe(
+      "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    );
+
+    expect(validateSourceUrl("https://www.youtube.com/watch?v=dQw4w9WgXcQ")).toBeNull();
+    expect(validateSourceUrl("https://youtu.be/dQw4w9WgXcQ")).toBeNull();
+    expect(validateSourceUrl("https://www.youtube.com/shorts/dQw4w9WgXcQ")).toBeNull();
+    expect(validateSourceUrl("https://www.youtube.com/embed/dQw4w9WgXcQ")).toBeNull();
+    expect(validateSourceUrl("https://cdn.example.com/video.mp4")).toBeNull();
+
+    // Rejects playlists, channels, non-HTTPS, credentials, lookalike domains and other platforms
+    expect(validateSourceUrl("https://www.youtube.com/playlist?list=PL123")).toMatch(
+      /único vídeo do YouTube/i,
+    );
+    expect(validateSourceUrl("https://www.youtube.com/@canal")).toMatch(/único vídeo do YouTube/i);
+    expect(validateSourceUrl("https://www.youtube.com/channel/UC123")).toMatch(
+      /único vídeo do YouTube/i,
+    );
+    expect(validateSourceUrl("http://www.youtube.com/watch?v=dQw4w9WgXcQ")).toMatch(/HTTPS/i);
+    expect(validateSourceUrl("https://user:pw@www.youtube.com/watch?v=dQw4w9WgXcQ")).toMatch(
+      /sem usuário\/senha/i,
+    );
+    expect(validateSourceUrl("https://youtube.com.evil.example/watch?v=dQw4w9WgXcQ")).toMatch(
+      /Apenas links de um único vídeo do YouTube/i,
+    );
+    expect(validateSourceUrl("https://www.instagram.com/reel/abc")).toMatch(
+      /Apenas links de um único vídeo do YouTube/i,
+    );
   });
 
   it("normalizes hashtags", () => {

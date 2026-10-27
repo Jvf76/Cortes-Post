@@ -14,6 +14,7 @@ from .integrations import download_source, suggest_clips, translate_segments
 from .media import build_ass, build_srt, probe_media, render, transcribe
 from .models import Account, Clip, Cue, Outbox, Project, Publication, TranscriptSegment
 from .youtube import PermanentPublishError, TransientPublishError, reconcile_status, upload
+from .youtube_import import YouTubeImportCancelled, canonicalize_youtube_url, import_youtube_video
 
 s = get_settings()
 class CancelledJob(RuntimeError): ...
@@ -92,6 +93,12 @@ def _ensure_project_active(db, project: Project) -> None:
         raise CancelledJob("Projeto cancelado")
 
 
+def _project_cancelled(project_id: str) -> bool:
+    with SessionLocal() as check_db:
+        project = check_db.get(Project, project_id)
+        return not project or project.deleted_at is not None or project.status == "cancelled"
+
+
 @celery_app.task(name="app.worker.process_project")
 def process_project(project_id: str):
     with SessionLocal() as db:
@@ -102,7 +109,14 @@ def process_project(project_id: str):
             project.status = "processing"; project.stage = "importing"; project.progress = 5; project.error = None; db.commit()
             source = Path(project.source_path) if project.source_path else s.storage_dir / project.user_id / project.id / "source.mp4"
             if project.source_url and not project.source_path:
-                download_source(project.source_url, source); project.source_path = str(source)
+                if canonicalize_youtube_url(project.source_url):
+                    import_youtube_video(project.source_url, source, lambda: _project_cancelled(project.id))
+                else:
+                    download_source(project.source_url, source)
+                project.source_path = str(source)
+                # refresh() below checks durable cancellation state; flush the
+                # imported path first so that refresh cannot discard it.
+                db.flush()
             media = probe_media(source)
             _ensure_project_active(db, project)
             duration = media["duration"]
@@ -139,7 +153,7 @@ def process_project(project_id: str):
                     warnings.append("Tradução pt-BR indisponível; o texto original permanece editável")
                 if not db.scalar(select(Clip.id).where(Clip.project_id == project.id).limit(1)):
                     try:
-                        suggestions = suggest_clips(transcript, project.duration_seconds, duration)
+                        suggestions = suggest_clips(transcript, project.duration_seconds, duration, project.editing_instructions)
                         _ensure_project_active(db, project)
                     except Exception:
                         warnings.append("Sugestões automáticas indisponíveis; crie um corte manual")
@@ -150,9 +164,10 @@ def process_project(project_id: str):
                         for segment in _cues_for_window(db, project.id, clip.start_seconds, clip.end_seconds):
                             db.add(Cue(clip_id=clip.id, start_seconds=max(segment.start_seconds, clip.start_seconds)-clip.start_seconds, end_seconds=min(segment.end_seconds, clip.end_seconds)-clip.start_seconds, original_text=segment.original_text, translated_text=segment.translated_text))
             else:
-                warnings.append("Gemini não configurado: tradução e sugestões automáticas indisponíveis; crie um corte manual")
+                suffix = " As orientações editoriais foram preservadas, mas não aplicadas automaticamente." if project.editing_instructions else ""
+                warnings.append("Gemini não configurado: tradução e sugestões automáticas indisponíveis; crie um corte manual." + suffix)
             project.status = "ready"; project.stage = "ready"; project.progress = 100; project.error = "; ".join(warnings) or None; db.commit()
-        except CancelledJob:
+        except (CancelledJob, YouTubeImportCancelled):
             project.status = "cancelled"; project.progress = None; db.commit()
         except Exception as exc:
             project.status = "failed"; project.error = str(exc)[:2000]; project.progress = None; db.commit(); raise

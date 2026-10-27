@@ -56,9 +56,12 @@ export interface Clip {
 
 export type ClipDuration = 30 | 45 | 60;
 
+export const MAX_EDITING_INSTRUCTIONS = 2000;
+
 export interface Project {
   id: UUID;
   title: string;
+  editing_instructions: string;
   status: string;
   stage: string;
   progress: number | null;
